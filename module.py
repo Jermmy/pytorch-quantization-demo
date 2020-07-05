@@ -141,10 +141,11 @@ class QConv2d(QModule):
     def forward(self, x):
         if hasattr(self, 'qi'):
             self.qi.update(x)
+
         self.qw.update(self.conv_module.weight.data)
 
-        q_weight = self.qw.quantize_tensor(self.conv_module.weight.data)
-        self.conv_module.weight.data = self.qw.dequantize_tensor(q_weight)
+        self.conv_module.weight.data = self.qw.quantize_tensor(self.conv_module.weight.data)
+        self.conv_module.weight.data = self.qw.dequantize_tensor(self.conv_module.weight.data)
 
         x = self.conv_module(x)
 
@@ -167,7 +168,6 @@ class QLinear(QModule):
         self.num_bits = num_bits
         self.fc_module = fc_module
         self.qw = QParam(num_bits=num_bits)
-        # self.qb = QParam(num_bits=num_bits)
 
     def freeze(self, qi=None, qo=None):
 
@@ -195,10 +195,11 @@ class QLinear(QModule):
     def forward(self, x):
         if hasattr(self, 'qi'):
             self.qi.update(x)
+
         self.qw.update(self.fc_module.weight.data)
 
-        q_weight = self.qw.quantize_tensor(self.fc_module.weight.data)
-        self.fc_module.weight.data = self.qw.dequantize_tensor(q_weight)
+        self.fc_module.weight.data = self.qw.quantize_tensor(self.fc_module.weight.data)
+        self.fc_module.weight.data = self.qw.dequantize_tensor(self.fc_module.weight.data)
 
         x = self.fc_module(x)
         if hasattr(self, 'qo'):
@@ -231,7 +232,9 @@ class QReLU(QModule):
     def forward(self, x):
         if hasattr(self, 'qi'):
             self.qi.update(x)
+
         x = F.relu(x)
+
         if hasattr(self, 'qo'):
             self.qo.update(x)
         return x
@@ -260,16 +263,14 @@ class QMaxPooling2d(QModule):
     def forward(self, x):
         if hasattr(self, 'qi'):
             self.qi.update(x)
+
         x = F.max_pool2d(x, self.kernel_size, self.stride, self.padding)
+
         if hasattr(self, 'qo'):
             self.qo.update(x)
         return x
 
     def quantize_inference(self, x):
         return F.max_pool2d(x, self.kernel_size, self.stride, self.padding)
-
-
-        
-
 
 

@@ -12,7 +12,7 @@ import os.path as osp
 def direct_quantize(model, test_loader):
     for i, (data, target) in enumerate(test_loader, 1):
         output = model.quantize_forward(data)
-        if i % 100 == 0:
+        if i % 200 == 0:
             break
     print('direct quantization finish')
 
@@ -52,7 +52,7 @@ if __name__ == "__main__":
             transforms.ToTensor(),
             transforms.Normalize((0.1307,), (0.3081,))
         ])),
-        batch_size=batch_size, shuffle=True, num_workers=1, pin_memory=True
+        batch_size=batch_size, shuffle=False, num_workers=1, pin_memory=True
     )
 
     model = Net()
@@ -61,7 +61,7 @@ if __name__ == "__main__":
     model.eval()
     full_inference(model, test_loader)
 
-    model.quantize(num_bits=3)
+    model.quantize(num_bits=8)
     direct_quantize(model, train_loader)
 
     model.freeze()
