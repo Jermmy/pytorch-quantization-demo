@@ -5,6 +5,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from function import FakeQuantize
+
 
 def calcScaleZeroPoint(min_val, max_val, num_bits=8):
     qmin = 0.
@@ -33,7 +35,7 @@ def quantize_tensor(x, scale, zero_point, num_bits=8, signed=False):
     q_x = zero_point + x / scale
     q_x.clamp_(qmin, qmax).round_()
     
-    return q_x.float()
+    return q_x
  
 def dequantize_tensor(q_x, scale, zero_point):
     return scale * (q_x - zero_point)
@@ -141,23 +143,28 @@ class QConv2d(QModule):
     def forward(self, x):
         if hasattr(self, 'qi'):
             self.qi.update(x)
+            x = FakeQuantize.apply(x, self.qi)
 
         self.qw.update(self.conv_module.weight.data)
 
-        self.conv_module.weight.data = self.qw.quantize_tensor(self.conv_module.weight.data)
-        self.conv_module.weight.data = self.qw.dequantize_tensor(self.conv_module.weight.data)
-
-        x = self.conv_module(x)
+        x = F.conv2d(x, FakeQuantize.apply(self.conv_module.weight, self.qw), self.conv_module.bias, 
+                     stride=self.conv_module.stride,
+                     padding=self.conv_module.padding, dilation=self.conv_module.dilation, 
+                     groups=self.conv_module.groups)
 
         if hasattr(self, 'qo'):
             self.qo.update(x)
+            x = FakeQuantize.apply(x, self.qo)
 
         return x
 
     def quantize_inference(self, x):
         x = x - self.qi.zero_point
         x = self.conv_module(x)
-        x = self.M * x + self.qo.zero_point
+        x = self.M * x
+        x.round_() 
+        x = x + self.qo.zero_point        
+        x.clamp_(0., 2.**self.num_bits-1.).round_()
         return x
 
 
@@ -195,82 +202,81 @@ class QLinear(QModule):
     def forward(self, x):
         if hasattr(self, 'qi'):
             self.qi.update(x)
+            x = FakeQuantize.apply(x, self.qi)
 
         self.qw.update(self.fc_module.weight.data)
 
-        self.fc_module.weight.data = self.qw.quantize_tensor(self.fc_module.weight.data)
-        self.fc_module.weight.data = self.qw.dequantize_tensor(self.fc_module.weight.data)
+        x = F.linear(x, FakeQuantize.apply(self.fc_module.weight, self.qw), self.fc_module.bias)
 
-        x = self.fc_module(x)
         if hasattr(self, 'qo'):
             self.qo.update(x)
+            x = FakeQuantize.apply(x, self.qo)
 
         return x
 
     def quantize_inference(self, x):
         x = x - self.qi.zero_point
         x = self.fc_module(x)
-        x = self.M * x + self.qo.zero_point
+        x = self.M * x
+        x.round_() 
+        x = x + self.qo.zero_point
+        x.clamp_(0., 2.**self.num_bits-1.).round_()
         return x
 
 
 class QReLU(QModule):
 
-    def __init__(self, qi=False, qo=False, num_bits=None):
-        super(QReLU, self).__init__(qi=qi, qo=qo, num_bits=num_bits)
+    def __init__(self, qi=False, num_bits=None):
+        super(QReLU, self).__init__(qi=qi, num_bits=num_bits)
 
-    def freeze(self, qo=None):
+    def freeze(self, qi=None):
         
-        if hasattr(self, 'qo') and qo is not None:
-            raise ValueError('qo has been provided in init function.')
-        if not hasattr(self, 'qo') and qo is None:
-            raise ValueError('qo is not existed, should be provided.')
+        if hasattr(self, 'qi') and qi is not None:
+            raise ValueError('qi has been provided in init function.')
+        if not hasattr(self, 'qi') and qi is None:
+            raise ValueError('qi is not existed, should be provided.')
 
-        if qo is not None:
-            self.qo = qo
+        if qi is not None:
+            self.qi = qi
 
     def forward(self, x):
         if hasattr(self, 'qi'):
             self.qi.update(x)
+            x = FakeQuantize.apply(x, self.qi)
 
         x = F.relu(x)
 
-        if hasattr(self, 'qo'):
-            self.qo.update(x)
         return x
     
     def quantize_inference(self, x):
         x = x.clone()
-        x[x < self.qo.zero_point] = self.qo.zero_point
+        x[x < self.qi.zero_point] = self.qi.zero_point
         return x
 
 class QMaxPooling2d(QModule):
 
-    def __init__(self, kernel_size=3, stride=1, padding=0, qi=False, qo=False, num_bits=None):
-        super(QMaxPooling2d, self).__init__(qi=qi, qo=qo, num_bits=num_bits)
+    def __init__(self, kernel_size=3, stride=1, padding=0, qi=False, num_bits=None):
+        super(QMaxPooling2d, self).__init__(qi=qi, num_bits=num_bits)
         self.kernel_size = kernel_size
         self.stride = stride
         self.padding = padding
 
-    def freeze(self, qo=None):
-        if hasattr(self, 'qo') and qo is not None:
-            raise ValueError('qo has been provided in init function.')
-        if not hasattr(self, 'qo') and qo is None:
-            raise ValueError('qo is not existed, should be provided.')
-        if qo is not None:
-            self.qo = qo
+    def freeze(self, qi=None):
+        if hasattr(self, 'qi') and qi is not None:
+            raise ValueError('qi has been provided in init function.')
+        if not hasattr(self, 'qi') and qi is None:
+            raise ValueError('qi is not existed, should be provided.')
+        if qi is not None:
+            self.qi = qi
 
     def forward(self, x):
         if hasattr(self, 'qi'):
             self.qi.update(x)
+            x = FakeQuantize.apply(x, self.qi)
 
         x = F.max_pool2d(x, self.kernel_size, self.stride, self.padding)
 
-        if hasattr(self, 'qo'):
-            self.qo.update(x)
         return x
 
     def quantize_inference(self, x):
         return F.max_pool2d(x, self.kernel_size, self.stride, self.padding)
-
-

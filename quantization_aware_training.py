@@ -9,17 +9,26 @@ import os
 import os.path as osp
 
 
-def direct_quantize(model, test_loader):
-    for i, (data, target) in enumerate(test_loader, 1):
+def quantize_aware_training(model, device, train_loader, optimizer, epoch):
+    lossLayer = torch.nn.CrossEntropyLoss()
+    for batch_idx, (data, target) in enumerate(train_loader, 1):
+        data, target = data.to(device), target.to(device)
+        optimizer.zero_grad()
         output = model.quantize_forward(data)
-        if i % 200 == 0:
-            break
-    print('direct quantization finish')
+        loss = lossLayer(output, target)
+        loss.backward()
+        optimizer.step()
+
+        if batch_idx % 50 == 0:
+            print('Quantize Aware Training Epoch: {} [{}/{}]\tLoss: {:.6f}'.format(
+                epoch, batch_idx * len(data), len(train_loader.dataset), loss.item()
+            ))
 
 
 def full_inference(model, test_loader):
     correct = 0
     for i, (data, target) in enumerate(test_loader, 1):
+        data, target = data.to(device), target.to(device)
         output = model(data)
         pred = output.argmax(dim=1, keepdim=True)
         correct += pred.eq(target.view_as(pred)).sum().item()
@@ -29,6 +38,7 @@ def full_inference(model, test_loader):
 def quantize_inference(model, test_loader):
     correct = 0
     for i, (data, target) in enumerate(test_loader, 1):
+        data, target = data.to(device), target.to(device)
         output = model.quantize_inference(data)
         pred = output.argmax(dim=1, keepdim=True)
         correct += pred.eq(target.view_as(pred)).sum().item()
@@ -37,6 +47,14 @@ def quantize_inference(model, test_loader):
 
 if __name__ == "__main__":
     batch_size = 64
+    seed = 1
+    epochs = 2
+    lr = 0.001
+    momentum = 0.5
+
+    torch.manual_seed(seed)
+
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     train_loader = torch.utils.data.DataLoader(
         datasets.MNIST('data', train=True, download=True, 
@@ -52,21 +70,28 @@ if __name__ == "__main__":
             transforms.ToTensor(),
             transforms.Normalize((0.1307,), (0.3081,))
         ])),
-        batch_size=batch_size, shuffle=False, num_workers=1, pin_memory=True
+        batch_size=batch_size, shuffle=True, num_workers=1, pin_memory=True
     )
 
     model = Net()
     model.load_state_dict(torch.load('ckpt/mnist_cnn.pt'))
+    model.to(device)
+
+    optimizer = optim.SGD(model.parameters(), lr=lr, momentum=momentum)
 
     model.eval()
     full_inference(model, test_loader)
 
-    num_bits = 8
+    model.train()
+
+    num_bits = 3
     model.quantize(num_bits=num_bits)
     print('Quantization bit: %d' % num_bits)
 
-    direct_quantize(model, train_loader)
-
+    for epoch in range(1, epochs + 1):
+        quantize_aware_training(model, device, train_loader, optimizer, epoch)
+    
+    model.eval()
     model.freeze()
 
     quantize_inference(model, test_loader)
