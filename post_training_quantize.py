@@ -12,7 +12,7 @@ import os.path as osp
 def direct_quantize(model, test_loader):
     for i, (data, target) in enumerate(test_loader, 1):
         output = model.quantize_forward(data)
-        if i % 200 == 0:
+        if i % 500 == 0:
             break
     print('direct quantization finish')
 
@@ -37,6 +37,7 @@ def quantize_inference(model, test_loader):
 
 if __name__ == "__main__":
     batch_size = 64
+    using_bn = True
 
     train_loader = torch.utils.data.DataLoader(
         datasets.MNIST('data', train=True, download=True, 
@@ -55,14 +56,19 @@ if __name__ == "__main__":
         batch_size=batch_size, shuffle=False, num_workers=1, pin_memory=True
     )
 
-    model = Net()
-    model.load_state_dict(torch.load('ckpt/mnist_cnn.pt'))
+    if using_bn:
+        model = NetBN()
+        model.load_state_dict(torch.load('ckpt/mnist_cnnbn.pt'))
+    else:
+        model = Net()
+        model.load_state_dict(torch.load('ckpt/mnist_cnn.pt'))
 
     model.eval()
     full_inference(model, test_loader)
 
     num_bits = 8
     model.quantize(num_bits=num_bits)
+    model.eval()
     print('Quantization bit: %d' % num_bits)
 
     direct_quantize(model, train_loader)

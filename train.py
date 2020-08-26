@@ -51,6 +51,7 @@ if __name__ == "__main__":
     lr = 0.01
     momentum = 0.5
     save_model = True
+    using_bn = True
 
     torch.manual_seed(seed)
 
@@ -73,7 +74,11 @@ if __name__ == "__main__":
         batch_size=test_batch_size, shuffle=True, num_workers=1, pin_memory=True
     )
 
-    model = Net().to(device)
+    if using_bn:
+        model = NetBN().to(device)
+    else:
+        model = Net().to(device)
+
     optimizer = optim.SGD(model.parameters(), lr=lr, momentum=momentum)
 
     for epoch in range(1, epochs + 1):
@@ -83,4 +88,7 @@ if __name__ == "__main__":
     if save_model:
         if not osp.exists('ckpt'):
             os.makedirs('ckpt')
-        torch.save(model.state_dict(), 'ckpt/mnist_cnn.pt')
+        if using_bn:
+            torch.save(model.state_dict(), 'ckpt/mnist_cnnbn.pt')
+        else:
+            torch.save(model.state_dict(), 'ckpt/mnist_cnn.pt')
