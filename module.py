@@ -71,9 +71,11 @@ class QParam:
     def update(self, tensor):
         if self.max is None or self.max < tensor.max():
             self.max = tensor.max()
+        self.max = 0 if self.max < 0 else self.max
         
         if self.min is None or self.min > tensor.min():
             self.min = tensor.min()
+        self.min = 0 if self.min > 0 else self.min
         
         self.scale, self.zero_point = calcScaleZeroPoint(self.min, self.max, self.num_bits)
     
