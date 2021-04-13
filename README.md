@@ -1,4 +1,8 @@
 # pytorch-quantization-demo
 A simple network quantization demo using pytorch from scratch. This is the code for my [tutorial](https://jermmy.github.io/2020/06/13/2020-6-13-network-quantization-1/) about network quantization written in Chinese. 
-感兴趣的读者欢迎关注我的知乎专栏：https://zhuanlan.zhihu.com/c_1258047709686231040
+
+感兴趣的读者欢迎关注我的知乎专栏：[AI小男孩](https://zhuanlan.zhihu.com/c_1258047709686231040)
+
+以及同名公众号：AI小男孩
+
 
