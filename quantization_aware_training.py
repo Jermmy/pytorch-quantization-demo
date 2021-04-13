@@ -49,7 +49,7 @@ if __name__ == "__main__":
     batch_size = 64
     seed = 1
     epochs = 3
-    lr = 0.04
+    lr = 0.01
     momentum = 0.5
     using_bn = True
 
@@ -63,7 +63,7 @@ if __name__ == "__main__":
                             transforms.ToTensor(),
                             transforms.Normalize((0.1307,), (0.3081,))
                        ])),
-        batch_size=batch_size, shuffle=True, num_workers=1, pin_memory=True
+        batch_size=batch_size, shuffle=True, num_workers=1, pin_memory=False
     )
 
     test_loader = torch.utils.data.DataLoader(
@@ -71,30 +71,34 @@ if __name__ == "__main__":
             transforms.ToTensor(),
             transforms.Normalize((0.1307,), (0.3081,))
         ])),
-        batch_size=batch_size, shuffle=True, num_workers=1, pin_memory=True
+        batch_size=batch_size, shuffle=True, num_workers=1, pin_memory=False
     )
 
     if using_bn:
         model = NetBN()
-        model.load_state_dict(torch.load('ckpt/mnist_cnnbn.pt'))
+        model.load_state_dict(torch.load('ckpt/mnist_cnnbn.pt', map_location='cpu'))
     else:
         model = Net()
-        model.load_state_dict(torch.load('ckpt/mnist_cnn.pt'))
+        model.load_state_dict(torch.load('ckpt/mnist_cnn.pt', map_location='cpu'))
     model.to(device)
 
     optimizer = optim.SGD(model.parameters(), lr=lr, momentum=momentum)
 
     model.eval()
+    
     full_inference(model, test_loader)
-
-    model.train()
+    full_inference(model, test_loader)
+    full_inference(model, test_loader)
 
     num_bits = 8
     model.quantize(num_bits=num_bits)
     print('Quantization bit: %d' % num_bits)
 
+    model.train()
+
     for epoch in range(1, epochs + 1):
         quantize_aware_training(model, device, train_loader, optimizer, epoch)
+
     
     model.eval()
     model.freeze()

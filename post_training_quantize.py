@@ -58,10 +58,10 @@ if __name__ == "__main__":
 
     if using_bn:
         model = NetBN()
-        model.load_state_dict(torch.load('ckpt/mnist_cnnbn.pt'))
+        model.load_state_dict(torch.load('ckpt/mnist_cnnbn.pt', map_location='cpu'))
     else:
         model = Net()
-        model.load_state_dict(torch.load('ckpt/mnist_cnn.pt'))
+        model.load_state_dict(torch.load('ckpt/mnist_cnn.pt', map_location='cpu'))
 
     model.eval()
     full_inference(model, test_loader)

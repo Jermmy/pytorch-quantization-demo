@@ -4,6 +4,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.autograd import Variable
 
 from function import FakeQuantize
 
@@ -325,8 +326,10 @@ class QConvBNReLU(QModule):
                             groups=self.conv_module.groups)
             y = y.permute(1, 0, 2, 3) # NCHW -> CNHW
             y = y.contiguous().view(self.conv_module.out_channels, -1) # CNHW -> C,NHW
-            mean = y.mean(1)
-            var = y.var(1)
+            # mean = y.mean(1)
+            # var = y.var(1)
+            mean = y.mean(1).detach()
+            var = y.var(1).detach()
             self.bn_module.running_mean = \
                 self.bn_module.momentum * self.bn_module.running_mean + \
                 (1 - self.bn_module.momentum) * mean
@@ -334,8 +337,8 @@ class QConvBNReLU(QModule):
                 self.bn_module.momentum * self.bn_module.running_var + \
                 (1 - self.bn_module.momentum) * var
         else:
-            mean = self.bn_module.running_mean
-            var = self.bn_module.running_var
+            mean = Variable(self.bn_module.running_mean)
+            var = Variable(self.bn_module.running_var)
 
         std = torch.sqrt(var + self.bn_module.eps)
 
