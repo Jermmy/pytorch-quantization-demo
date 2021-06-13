@@ -1,3 +1,4 @@
+from torch.serialization import load
 from model import *
 
 import argparse
@@ -38,6 +39,8 @@ def quantize_inference(model, test_loader):
 if __name__ == "__main__":
     batch_size = 64
     using_bn = True
+    load_quant_model_file = "ckpt/mnist_cnnbn_ptq.pt"
+    # load_model_file = None
 
     train_loader = torch.utils.data.DataLoader(
         datasets.MNIST('data', train=True, download=True, 
@@ -59,9 +62,11 @@ if __name__ == "__main__":
     if using_bn:
         model = NetBN()
         model.load_state_dict(torch.load('ckpt/mnist_cnnbn.pt', map_location='cpu'))
+        save_file = "ckpt/mnist_cnnbn_ptq.pt"
     else:
         model = Net()
         model.load_state_dict(torch.load('ckpt/mnist_cnn.pt', map_location='cpu'))
+        save_file = "ckpt/mnist_cnn_ptq.pt"
 
     model.eval()
     full_inference(model, test_loader)
@@ -71,8 +76,13 @@ if __name__ == "__main__":
     model.eval()
     print('Quantization bit: %d' % num_bits)
 
+    if load_quant_model_file is not None:
+        model.load_state_dict(torch.load(load_quant_model_file))
+        print("Successfully load quantized model %s" % load_quant_model_file)
+    
     direct_quantize(model, train_loader)
 
+    torch.save(model.state_dict(), save_file)
     model.freeze()
 
     quantize_inference(model, test_loader)
