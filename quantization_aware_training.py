@@ -52,6 +52,8 @@ if __name__ == "__main__":
     lr = 0.01
     momentum = 0.5
     using_bn = True
+    # load_quant_model_file = None
+    load_quant_model_file = "ckpt/mnist_cnnbn_qat.pt"
 
     torch.manual_seed(seed)
 
@@ -77,9 +79,11 @@ if __name__ == "__main__":
     if using_bn:
         model = NetBN()
         model.load_state_dict(torch.load('ckpt/mnist_cnnbn.pt', map_location='cpu'))
+        save_file = "ckpt/mnist_cnnbn_qat.pt"
     else:
         model = Net()
         model.load_state_dict(torch.load('ckpt/mnist_cnn.pt', map_location='cpu'))
+        save_file = "ckpt/mnist_cnn_qat.pt"
     model.to(device)
 
     optimizer = optim.SGD(model.parameters(), lr=lr, momentum=momentum)
@@ -87,20 +91,23 @@ if __name__ == "__main__":
     model.eval()
     
     full_inference(model, test_loader)
-    full_inference(model, test_loader)
-    full_inference(model, test_loader)
 
     num_bits = 8
     model.quantize(num_bits=num_bits)
     print('Quantization bit: %d' % num_bits)
+
+    if load_quant_model_file is not None:
+        model.load_state_dict(torch.load(load_quant_model_file))
+        print("Successfully load quantized model %s" % load_quant_model_file)
 
     model.train()
 
     for epoch in range(1, epochs + 1):
         quantize_aware_training(model, device, train_loader, optimizer, epoch)
 
-    
     model.eval()
+    torch.save(model.state_dict(), save_file)
+
     model.freeze()
 
     quantize_inference(model, test_loader)
