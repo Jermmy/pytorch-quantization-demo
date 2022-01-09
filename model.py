@@ -1,6 +1,8 @@
 import torch
+from torch.fx.graph_module import GraphModule
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.fx
 
 from module import *
 
@@ -23,103 +25,54 @@ class Net(nn.Module):
         return x
 
     def quantize(self, num_bits=8):
-        self.qconv1 = QConv2d(self.conv1, qi=True, qo=True, num_bits=num_bits)
-        self.qrelu1 = QReLU()
-        self.qmaxpool2d_1 = QMaxPooling2d(kernel_size=2, stride=2, padding=0)
-        self.qconv2 = QConv2d(self.conv2, qi=False, qo=True, num_bits=num_bits)
-        self.qrelu2 = QReLU()
-        self.qmaxpool2d_2 = QMaxPooling2d(kernel_size=2, stride=2, padding=0)
-        self.qfc = QLinear(self.fc, qi=False, qo=True, num_bits=num_bits)
+        graph_model = torch.fx.symbolic_trace(self)
+        print(graph_model)
+        # module quant
+        graph_model = self._module_quant(graph_model, num_bits)
+        print(graph_model)
+        # function quant
+        self._function_quant(graph_model, num_bits)
+        print(graph_model)
 
-    def quantize_forward(self, x):
-        x = self.qconv1(x)
-        x = self.qrelu1(x)
-        x = self.qmaxpool2d_1(x)
-        x = self.qconv2(x)
-        x = self.qrelu2(x)
-        x = self.qmaxpool2d_2(x)
-        x = x.view(-1, 5*5*40)
-        x = self.qfc(x)
-        return x
-
-    def freeze(self):
-        self.qconv1.freeze()
-        self.qrelu1.freeze(self.qconv1.qo)
-        self.qmaxpool2d_1.freeze(self.qconv1.qo)
-        self.qconv2.freeze(qi=self.qconv1.qo)
-        self.qrelu2.freeze(self.qconv2.qo)
-        self.qmaxpool2d_2.freeze(self.qconv2.qo)
-        self.qfc.freeze(qi=self.qconv2.qo)
-
-    def quantize_inference(self, x):
-        qx = self.qconv1.qi.quantize_tensor(x)
-        qx = self.qconv1.quantize_inference(qx)
-        qx = self.qrelu1.quantize_inference(qx)
-        qx = self.qmaxpool2d_1.quantize_inference(qx)
-        qx = self.qconv2.quantize_inference(qx)
-        qx = self.qrelu2.quantize_inference(qx)
-        qx = self.qmaxpool2d_2.quantize_inference(qx)
-        qx = qx.view(-1, 5*5*40)
-        qx = self.qfc.quantize_inference(qx)
-        out = self.qfc.qo.dequantize_tensor(qx)
-        return out
-
-
-class NetBN(nn.Module):
-
-    def __init__(self, num_channels=1):
-        super(NetBN, self).__init__()
-        self.conv1 = nn.Conv2d(num_channels, 40, 3, 1)
-        self.bn1 = nn.BatchNorm2d(40)
-        self.conv2 = nn.Conv2d(40, 40, 3, 1)
-        self.bn2 = nn.BatchNorm2d(40)
-        self.fc = nn.Linear(5 * 5 * 40, 10)
-
-    def forward(self, x):
-        x = self.conv1(x)
-        x = self.bn1(x)
-        x = F.relu(x)
-        x = F.max_pool2d(x, 2, 2)
-        x = self.conv2(x)
-        x = self.bn2(x)
-        x = F.relu(x)
-        x = F.max_pool2d(x, 2, 2)
-        x = x.view(-1, 5 * 5 * 40)
-        x = self.fc(x)
-        return x
-
-    def quantize(self, num_bits=8):
-        self.qconv1 = QConvBNReLU(self.conv1, self.bn1, qi=True, qo=True, num_bits=num_bits)
-        self.qmaxpool2d_1 = QMaxPooling2d(kernel_size=2, stride=2, padding=0)
-        self.qconv2 = QConvBNReLU(self.conv2, self.bn2, qi=False, qo=True, num_bits=num_bits)
-        self.qmaxpool2d_2 = QMaxPooling2d(kernel_size=2, stride=2, padding=0)
-        self.qfc = QLinear(self.fc, qi=False, qo=True, num_bits=num_bits)
-
-    def quantize_forward(self, x):
-        x = self.qconv1(x)
-        x = self.qmaxpool2d_1(x)
-        x = self.qconv2(x)
-        x = self.qmaxpool2d_2(x)
-        x = x.view(-1, 5*5*40)
-        x = self.qfc(x)
-        return x
-
-    def freeze(self):
-        self.qconv1.freeze()
-        self.qmaxpool2d_1.freeze(self.qconv1.qo)
-        self.qconv2.freeze(qi=self.qconv1.qo)
-        self.qmaxpool2d_2.freeze(self.qconv2.qo)
-        self.qfc.freeze(qi=self.qconv2.qo)
-
-    def quantize_inference(self, x):
-        qx = self.qconv1.qi.quantize_tensor(x)
-        qx = self.qconv1.quantize_inference(qx)
-        qx = self.qmaxpool2d_1.quantize_inference(qx)
-        qx = self.qconv2.quantize_inference(qx)
-        qx = self.qmaxpool2d_2.quantize_inference(qx)
-        qx = qx.view(-1, 5*5*40)
-
-        qx = self.qfc.quantize_inference(qx)
+    def _module_quant(self, graph_model: GraphModule, num_bits=8):
+        device = list(graph_model.parameters())[0].device
+        reassign = {}
+        for i, (name, mod) in enumerate(graph_model.named_children()):
+            qi = False
+            qo = True
+            if i == 0:
+                qi = True
+            if isinstance(mod, nn.Conv2d):
+                reassign[name] = QConv2d(mod, qi, qo, num_bits).to(device)
+            elif isinstance(mod, nn.Linear):
+                reassign[name] = QLinear(mod, qi, qo, num_bits).to(device)
         
-        out = self.qfc.qo.dequantize_tensor(qx)
-        return out
+        for key, value in reassign.items():
+            graph_model._modules[key] = value
+        
+        return graph_model
+                
+    def _function_quant(self, graph_model: GraphModule, num_bits=8):
+        device = list(graph_model.parameters())[0].device
+        nodes = list(graph_model.graph.nodes)
+        for i, node in enumerate(nodes):
+            if node.op == "call_function":
+                if node.target == F.relu:
+                    setattr(graph_model, "qrelu_%d" % i, QReLU().to(device))
+                    with graph_model.graph.inserting_after(node):
+                        new_node = graph_model.graph.call_module("qrelu_%d" % i, node.args, node.kwargs)
+                        node.replace_all_uses_with(new_node)
+                elif node.target == F.max_pool2d:
+                    setattr(graph_model, "qmaxpool2d_%d" % i, QMaxPooling2d().to(device))
+                    with graph_model.graph.inserting_after(node):
+                        new_node = graph_model.graph.call_module("qmaxpool2d_%d" % i, node.args, node.kwargs)
+                        node.replace_all_uses_with(new_node)
+                graph_model.graph.erase_node(node)
+        
+        graph_model.recompile()
+        return graph_model
+
+
+if __name__ == "__main__":
+    net = Net()
+    net.quantize()

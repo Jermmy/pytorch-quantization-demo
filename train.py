@@ -47,11 +47,11 @@ if __name__ == "__main__":
     batch_size = 64
     test_batch_size = 64
     seed = 1
-    epochs = 15
+    epochs = 5
     lr = 0.01
     momentum = 0.5
     save_model = True
-    using_bn = True
+    using_bn = False
 
     torch.manual_seed(seed)
 
