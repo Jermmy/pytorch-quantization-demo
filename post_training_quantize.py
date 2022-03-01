@@ -39,7 +39,7 @@ def quantize_inference(model, test_loader):
 if __name__ == "__main__":
     batch_size = 64
     using_bn = True
-    load_quant_model_file = "ckpt/mnist_cnnbn_ptq.pt"
+    load_quant_model_file = None
     # load_model_file = None
 
     train_loader = torch.utils.data.DataLoader(
