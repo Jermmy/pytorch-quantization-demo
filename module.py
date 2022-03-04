@@ -391,7 +391,9 @@ class QConvBNReLU(QModule):
             self.qo = qo
         self.M = self.qw.scale * self.qi.scale / self.qo.scale
 
-        weight, bias = self.fold_bn(self.bn_module.running_mean, self.bn_module.running_var)
+        std = torch.sqrt(self.bn_module.running_var + self.bn_module.eps)
+
+        weight, bias = self.fold_bn(self.bn_module.running_mean, std)
         self.conv_module.weight.data = self.qw.quantize_tensor(weight.data)
         self.conv_module.weight.data = self.conv_module.weight.data - self.qw.zero_point
 
