@@ -52,8 +52,8 @@ if __name__ == "__main__":
     lr = 0.01
     momentum = 0.5
     using_bn = True
-    # load_quant_model_file = None
-    load_quant_model_file = "ckpt/mnist_cnnbn_qat.pt"
+    load_quant_model_file = None
+#     load_quant_model_file = "ckpt/mnist_cnnbn_qat.pt"
 
     torch.manual_seed(seed)
 
