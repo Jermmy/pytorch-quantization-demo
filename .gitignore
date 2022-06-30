@@ -127,3 +127,9 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# Pytorch weight
+*.pt
+
+# data dir
+/data
