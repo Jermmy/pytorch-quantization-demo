@@ -3,4 +3,6 @@ A simple network quantization demo using pytorch from scratch. This is the code 
 
 也欢迎感兴趣的读者关注我的知乎专栏：[大白话模型量化](https://zhuanlan.zhihu.com/c_1258047709686231040)
 
+- [2022.6.30] 将作者知乎专栏和完整核心代码浓缩到一个文件Notes.ipynb，并添加了大量代码注释，方便大家学习和尝试。
+
 
