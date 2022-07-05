@@ -131,6 +131,7 @@ class QConv2d(QModule):
         self.num_bits = num_bits
         self.conv_module = conv_module
         self.qw = QParam(num_bits=num_bits)
+        self.register_buffer('M', torch.tensor([], requires_grad=False))  # 将M注册为buffer
 
     def freeze(self, qi=None, qo=None):
         
@@ -148,7 +149,7 @@ class QConv2d(QModule):
             self.qi = qi
         if qo is not None:
             self.qo = qo
-        self.M = self.qw.scale * self.qi.scale / self.qo.scale
+        self.M.data = (self.qw.scale * self.qi.scale / self.qo.scale).data
 
         self.conv_module.weight.data = self.qw.quantize_tensor(self.conv_module.weight.data)
         self.conv_module.weight.data = self.conv_module.weight.data - self.qw.zero_point
@@ -191,6 +192,7 @@ class QLinear(QModule):
         self.num_bits = num_bits
         self.fc_module = fc_module
         self.qw = QParam(num_bits=num_bits)
+        self.register_buffer('M', torch.tensor([], requires_grad=False))  # 将M注册为buffer
 
     def freeze(self, qi=None, qo=None):
 
@@ -208,7 +210,7 @@ class QLinear(QModule):
             self.qi = qi
         if qo is not None:
             self.qo = qo
-        self.M = self.qw.scale * self.qi.scale / self.qo.scale
+        self.M.data = (self.qw.scale * self.qi.scale / self.qo.scale).data
 
         self.fc_module.weight.data = self.qw.quantize_tensor(self.fc_module.weight.data)
         self.fc_module.weight.data = self.fc_module.weight.data - self.qw.zero_point
@@ -307,6 +309,7 @@ class QConvBNReLU(QModule):
         self.bn_module = bn_module
         self.qw = QParam(num_bits=num_bits)
         self.qb = QParam(num_bits=32)
+        self.register_buffer('M', torch.tensor([], requires_grad=False))  # 将M注册为buffer
 
     def fold_bn(self, mean, std):
         if self.bn_module.affine:
@@ -389,7 +392,7 @@ class QConvBNReLU(QModule):
             self.qi = qi
         if qo is not None:
             self.qo = qo
-        self.M = self.qw.scale * self.qi.scale / self.qo.scale
+        self.M.data = (self.qw.scale * self.qi.scale / self.qo.scale).data
 
         std = torch.sqrt(self.bn_module.running_var + self.bn_module.eps)
 
