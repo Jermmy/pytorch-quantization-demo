@@ -76,14 +76,22 @@ if __name__ == "__main__":
     model.eval()
     print('Quantization bit: %d' % num_bits)
 
+
     if load_quant_model_file is not None:
         model.load_state_dict(torch.load(load_quant_model_file))
         print("Successfully load quantized model %s" % load_quant_model_file)
     
+
     direct_quantize(model, train_loader)
 
     torch.save(model.state_dict(), save_file)
     model.freeze()
+
+    # 测试是否设备转移是否正确
+    # model.cuda()
+    # print(model.qconv1.M.device)
+    # model.cpu()
+    # print(model.qconv1.M.device)
 
     quantize_inference(model, test_loader)
 
