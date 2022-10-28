@@ -349,11 +349,11 @@ class QConvBNReLU(QModule):
             mean = y.mean(1).detach()
             var = y.var(1).detach()
             self.bn_module.running_mean = \
-                self.bn_module.momentum * self.bn_module.running_mean + \
-                (1 - self.bn_module.momentum) * mean
+                (1 - self.bn_module.momentum) * self.bn_module.running_mean + \
+                self.bn_module.momentum * mean
             self.bn_module.running_var = \
-                self.bn_module.momentum * self.bn_module.running_var + \
-                (1 - self.bn_module.momentum) * var
+                (1 - self.bn_module.momentum) * self.bn_module.running_var + \
+                self.bn_module.momentum * var
         else:
             mean = Variable(self.bn_module.running_mean)
             var = Variable(self.bn_module.running_var)
