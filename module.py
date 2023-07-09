@@ -16,11 +16,12 @@ def calcScaleZeroPoint(min_val, max_val, num_bits=8):
 
     zero_point = qmax - max_val / scale
 
+    # 统一buffer的shape为torch.Size([])，表示包含一个数但不是向量的tensor，因为min_val=x.min()的shape为torch.Size([])
     if zero_point < qmin:
-        zero_point = torch.tensor([qmin], dtype=torch.float32).to(min_val.device)
+        zero_point = torch.tensor(qmin, dtype=torch.float32).to(min_val.device)
     elif zero_point > qmax:
         # zero_point = qmax
-        zero_point = torch.tensor([qmax], dtype=torch.float32).to(max_val.device)
+        zero_point = torch.tensor(qmax, dtype=torch.float32).to(max_val.device)
     
     zero_point.round_()
 
@@ -117,6 +118,10 @@ class QModule(nn.Module):
         if qo:
             self.qo = QParam(num_bits=num_bits)
 
+    def set_qparam(self):
+        # 用于重用qparam
+        pass
+
     def freeze(self):
         pass
 
@@ -131,10 +136,10 @@ class QConv2d(QModule):
         self.num_bits = num_bits
         self.conv_module = conv_module
         self.qw = QParam(num_bits=num_bits)
-        self.register_buffer('M', torch.tensor([], requires_grad=False))  # 将M注册为buffer
+        # 修改M的shape为torch.Size([])，保证读取参数时不会产生类型错误
+        self.register_buffer('M', torch.tensor(1., requires_grad=False))  # 将M注册为buffer
 
-    def freeze(self, qi=None, qo=None):
-        
+    def set_qparam(self, qi=None, qo=None):
         if hasattr(self, 'qi') and qi is not None:
             raise ValueError('qi has been provided in init function.')
         if not hasattr(self, 'qi') and qi is None:
@@ -149,6 +154,13 @@ class QConv2d(QModule):
             self.qi = qi
         if qo is not None:
             self.qo = qo
+
+    def freeze(self):
+        if not hasattr(self, 'qi'):
+            raise ValueError('qi is not existed, should be provided.')
+        if not hasattr(self, 'qo'):
+            raise ValueError('qo is not existed, should be provided.')
+        
         self.M.data = (self.qw.scale * self.qi.scale / self.qo.scale).data
 
         self.conv_module.weight.data = self.qw.quantize_tensor(self.conv_module.weight.data)
@@ -178,7 +190,8 @@ class QConv2d(QModule):
     def quantize_inference(self, x):
         x = x - self.qi.zero_point
         x = self.conv_module(x)
-        x = self.M * x
+        # 粗糙模拟32位定点乘法
+        x = (self.M * (2**32)).round() * x / (2**32)
         x.round_() 
         x = x + self.qo.zero_point        
         x.clamp_(0., 2.**self.num_bits-1.).round_()
@@ -192,10 +205,9 @@ class QLinear(QModule):
         self.num_bits = num_bits
         self.fc_module = fc_module
         self.qw = QParam(num_bits=num_bits)
-        self.register_buffer('M', torch.tensor([], requires_grad=False))  # 将M注册为buffer
+        self.register_buffer('M', torch.tensor(1., requires_grad=False))  # 将M注册为buffer
 
-    def freeze(self, qi=None, qo=None):
-
+    def set_qparam(self, qi=None, qo=None):
         if hasattr(self, 'qi') and qi is not None:
             raise ValueError('qi has been provided in init function.')
         if not hasattr(self, 'qi') and qi is None:
@@ -210,6 +222,13 @@ class QLinear(QModule):
             self.qi = qi
         if qo is not None:
             self.qo = qo
+
+    def freeze(self):
+        if not hasattr(self, 'qi'):
+            raise ValueError('qi is not existed, should be provided.')
+        if not hasattr(self, 'qo'):
+            raise ValueError('qo is not existed, should be provided.')
+        
         self.M.data = (self.qw.scale * self.qi.scale / self.qo.scale).data
 
         self.fc_module.weight.data = self.qw.quantize_tensor(self.fc_module.weight.data)
@@ -235,7 +254,7 @@ class QLinear(QModule):
     def quantize_inference(self, x):
         x = x - self.qi.zero_point
         x = self.fc_module(x)
-        x = self.M * x
+        x = (self.M * (2**32)).round() * x / (2**32)
         x.round_() 
         x = x + self.qo.zero_point
         x.clamp_(0., 2.**self.num_bits-1.).round_()
@@ -244,11 +263,11 @@ class QLinear(QModule):
 
 class QReLU(QModule):
 
-    def __init__(self, qi=False, num_bits=None):
-        super(QReLU, self).__init__(qi=qi, num_bits=num_bits)
-
-    def freeze(self, qi=None):
-        
+    # 修复了会多存一个qo的小bug
+    def __init__(self, qi=False, qo=False,  num_bits=None):
+        super(QReLU, self).__init__(qi=qi, qo=qo,  num_bits=num_bits)
+    
+    def set_qparam(self, qi=None):
         if hasattr(self, 'qi') and qi is not None:
             raise ValueError('qi has been provided in init function.')
         if not hasattr(self, 'qi') and qi is None:
@@ -256,6 +275,10 @@ class QReLU(QModule):
 
         if qi is not None:
             self.qi = qi
+
+    def freeze(self):
+        if not hasattr(self, 'qi'):
+            raise ValueError('qi is not existed, should be provided.')
 
     def forward(self, x):
         if hasattr(self, 'qi'):
@@ -273,19 +296,18 @@ class QReLU(QModule):
 
 class QMaxPooling2d(QModule):
 
-    def __init__(self, kernel_size=3, stride=1, padding=0, qi=False, num_bits=None):
-        super(QMaxPooling2d, self).__init__(qi=qi, num_bits=num_bits)
+    def __init__(self, kernel_size=3, stride=1, padding=0, qi=False, qo=False, num_bits=None):
+        super(QMaxPooling2d, self).__init__(qi=qi, qo=qo, num_bits=num_bits)
         self.kernel_size = kernel_size
         self.stride = stride
         self.padding = padding
 
-    def freeze(self, qi=None):
-        if hasattr(self, 'qi') and qi is not None:
-            raise ValueError('qi has been provided in init function.')
-        if not hasattr(self, 'qi') and qi is None:
-            raise ValueError('qi is not existed, should be provided.')
-        if qi is not None:
-            self.qi = qi
+    # 似乎maxpool并不需要qparam
+    def set_qparam(self):
+        pass
+
+    def freeze(self):
+        pass
 
     def forward(self, x):
         if hasattr(self, 'qi'):
@@ -309,7 +331,7 @@ class QConvBNReLU(QModule):
         self.bn_module = bn_module
         self.qw = QParam(num_bits=num_bits)
         self.qb = QParam(num_bits=32)
-        self.register_buffer('M', torch.tensor([], requires_grad=False))  # 将M注册为buffer
+        self.register_buffer('M', torch.tensor(1., requires_grad=False))  # 将M注册为buffer
 
     def fold_bn(self, mean, std):
         if self.bn_module.affine:
@@ -377,7 +399,7 @@ class QConvBNReLU(QModule):
 
         return x
 
-    def freeze(self, qi=None, qo=None):
+    def set_qparam(self, qi=None, qo=None):
         if hasattr(self, 'qi') and qi is not None:
             raise ValueError('qi has been provided in init function.')
         if not hasattr(self, 'qi') and qi is None:
@@ -392,6 +414,13 @@ class QConvBNReLU(QModule):
             self.qi = qi
         if qo is not None:
             self.qo = qo
+
+    def freeze(self, qi=None, qo=None):
+        if not hasattr(self, 'qi'):
+            raise ValueError('qi is not existed, should be provided.')
+        if not hasattr(self, 'qo'):
+            raise ValueError('qo is not existed, should be provided.')
+
         self.M.data = (self.qw.scale * self.qi.scale / self.qo.scale).data
 
         std = torch.sqrt(self.bn_module.running_var + self.bn_module.eps)
@@ -406,7 +435,7 @@ class QConvBNReLU(QModule):
     def quantize_inference(self, x):
         x = x - self.qi.zero_point
         x = self.conv_module(x)
-        x = self.M * x
+        x = (self.M * (2**32)).round() * x / (2**32)
         x.round_() 
         x = x + self.qo.zero_point        
         x.clamp_(0., 2.**self.num_bits-1.).round_()

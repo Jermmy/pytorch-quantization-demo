@@ -51,9 +51,12 @@ if __name__ == "__main__":
     epochs = 3
     lr = 0.01
     momentum = 0.5
-    using_bn = True
-    load_quant_model_file = None
-#     load_quant_model_file = "ckpt/mnist_cnnbn_qat.pt"
+    using_bn = False
+    if using_bn:
+        load_quant_model_file = "ckpt/mnist_cnnbn_qat.pt"
+    else:
+        load_quant_model_file = "ckpt/mnist_cnn_qat.pt"
+    # load_quant_model_file = None
 
     torch.manual_seed(seed)
 
@@ -97,18 +100,17 @@ if __name__ == "__main__":
     print('Quantization bit: %d' % num_bits)
 
     if load_quant_model_file is not None:
+        model.reuse_qparam()
         model.load_state_dict(torch.load(load_quant_model_file))
         print("Successfully load quantized model %s" % load_quant_model_file)
-
-    model.train()
-
-    for epoch in range(1, epochs + 1):
-        quantize_aware_training(model, device, train_loader, optimizer, epoch)
-
-    model.eval()
-    torch.save(model.state_dict(), save_file)
-
-    model.freeze()
+    else:
+        model.train()
+        for epoch in range(1, epochs + 1):
+            quantize_aware_training(model, device, train_loader, optimizer, epoch)
+        model.eval()
+        model.reuse_qparam()
+        model.freeze()
+        torch.save(model.state_dict(), save_file)
 
     quantize_inference(model, test_loader)
 

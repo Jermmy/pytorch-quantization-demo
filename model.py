@@ -42,14 +42,21 @@ class Net(nn.Module):
         x = self.qfc(x)
         return x
 
+    def reuse_qparam(self):
+        # 重用qparam
+        self.qrelu1.set_qparam(qi=self.qconv1.qo)
+        self.qconv2.set_qparam(qi=self.qconv1.qo)
+        self.qrelu2.set_qparam(qi=self.qconv2.qo)
+        self.qfc.set_qparam(qi=self.qconv2.qo)
+
     def freeze(self):
         self.qconv1.freeze()
-        self.qrelu1.freeze(self.qconv1.qo)
-        self.qmaxpool2d_1.freeze(self.qconv1.qo)
-        self.qconv2.freeze(qi=self.qconv1.qo)
-        self.qrelu2.freeze(self.qconv2.qo)
-        self.qmaxpool2d_2.freeze(self.qconv2.qo)
-        self.qfc.freeze(qi=self.qconv2.qo)
+        self.qrelu1.freeze()
+        self.qmaxpool2d_1.freeze()
+        self.qconv2.freeze()
+        self.qrelu2.freeze()
+        self.qmaxpool2d_2.freeze()
+        self.qfc.freeze()
 
     def quantize_inference(self, x):
         qx = self.qconv1.qi.quantize_tensor(x)
@@ -104,12 +111,17 @@ class NetBN(nn.Module):
         x = self.qfc(x)
         return x
 
+    def reuse_qparam(self):
+        # 重用qparam
+        self.qconv2.set_qparam(qi=self.qconv1.qo)
+        self.qfc.set_qparam(qi=self.qconv2.qo)
+
     def freeze(self):
         self.qconv1.freeze()
-        self.qmaxpool2d_1.freeze(self.qconv1.qo)
-        self.qconv2.freeze(qi=self.qconv1.qo)
-        self.qmaxpool2d_2.freeze(self.qconv2.qo)
-        self.qfc.freeze(qi=self.qconv2.qo)
+        self.qmaxpool2d_1.freeze()
+        self.qconv2.freeze()
+        self.qmaxpool2d_2.freeze()
+        self.qfc.freeze()
 
     def quantize_inference(self, x):
         qx = self.qconv1.qi.quantize_tensor(x)
